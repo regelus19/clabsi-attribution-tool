@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLABSI Attribution Tool — NHSN 2025</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#0F172A;color:#E2E8F0;min-height:100vh;}
+.app{max-width:900px;margin:0 auto;padding:16px;}
+/* Header */
+.hdr{background:#1E293B;border-bottom:3px solid #0A7A6A;padding:16px 20px;border-radius:8px 8px 0 0;margin-bottom:4px;}
+.hdr-t{color:#12C5A6;font-size:20px;font-weight:700;}
+.hdr-s{color:#94A3B8;font-size:12px;margin-top:4px;}
+.hdr-badge{display:inline-block;background:#0A7A6A;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:8px;}
+/* Progress */
+.progress{background:#1E293B;padding:12px 20px;border-radius:4px;margin-bottom:4px;}
+.prog-bar{height:6px;background:#1A3760;border-radius:3px;margin-top:8px;}
+.prog-fill{height:6px;background:#0A7A6A;border-radius:3px;transition:width .3s;}
+.step-labels{display:flex;justify-content:space-between;margin-top:4px;}
+.sl{font-size:9px;color:#64748B;}
+/* Card */
+.card{background:#1E293B;border-radius:4px;padding:20px;margin-bottom:4px;}
+.card.result{border:2px solid;}
+.card.result.clabsi{border-color:#B91C1C;background:#1A0A0A;}
+.card.result.excluded{border-color:#0A7A6A;background:#0A1A12;}
+.card.result.lcbi{border-color:#5B21B6;background:#0F0A1A;}
+.card.result.secondary{border-color:#B45309;background:#1A0F00;}
+.card.result.mbi{border-color:#1A5276;background:#0A0F1A;}
+.q-num{color:#64748B;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;}
+.q-text{color:#F1F5F9;font-size:18px;font-weight:600;line-height:1.4;margin-bottom:12px;}
+.info-box{background:#0F172A;border-left:3px solid #0A7A6A;padding:10px 14px;border-radius:0 4px 4px 0;margin-bottom:16px;}
+.info-box p{color:#94A3B8;font-size:13px;line-height:1.6;}
+/* Buttons */
+.btn-row{display:flex;gap:10px;flex-wrap:wrap;}
+.btn{padding:10px 24px;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:all .2s;}
+.btn.yes{background:#0A7A6A;color:#fff;}
+.btn.yes:hover{background:#0D9488;}
+.btn.no{background:#1A3760;color:#7DD3C8;border:1px solid #0A7A6A;}
+.btn.no:hover{background:#1E4A7A;}
+.btn.reset{background:#374151;color:#9CA3AF;}
+.btn.option{background:#1A3760;color:#E2E8F0;border:1px solid #334155;margin-bottom:8px;width:100%;text-align:left;padding:12px 16px;}
+.btn.option:hover{border-color:#0A7A6A;color:#12C5A6;}
+/* Result */
+.result-icon{font-size:36px;margin-bottom:8px;}
+.result-title{font-size:22px;font-weight:700;margin-bottom:6px;}
+.result-sub{font-size:14px;color:#94A3B8;margin-bottom:16px;}
+.result-actions{margin-top:16px;}
+.doc-box{background:#0F172A;border:1px solid #334155;border-radius:6px;padding:14px;margin-top:12px;}
+.doc-box h4{color:#F5B800;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;}
+.doc-box p{color:#94A3B8;font-size:12px;line-height:1.7;}
+/* Tabs */
+.tabs{display:flex;gap:2px;margin-bottom:12px;flex-wrap:wrap;}
+.tab{padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;border-radius:4px;border:none;background:#0F172A;color:#64748B;}
+.tab.active{background:#0A7A6A;color:#fff;}
+.tab-content{font-size:12px;color:#94A3B8;line-height:1.8;}
+.tab-content h4{color:#12C5A6;font-size:12px;font-weight:700;margin:10px 0 4px;}
+.tab-content li{margin-left:16px;margin-bottom:3px;}
+.tab-content .warn{color:#F5B800;}
+.ref-card{background:#1E293B;border-radius:8px;padding:16px;margin-top:4px;}
+/* Breadcrumb */
+.breadcrumb{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;}
+.bc-item{font-size:11px;color:#64748B;display:flex;align-items:center;gap:4px;}
+.bc-item.active{color:#12C5A6;}
+.bc-arrow{color:#334155;}
+/* Footer */
+.footer{text-align:center;padding:16px;color:#475569;font-size:11px;margin-top:8px;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState} = React;
+
+const STEPS = [
+  {
+    id:'organism',
+    num:'Gate 1',
+    q:'Is the organism an NHSN-eligible pathogen?',
+    info:'NHSN excludes certain organisms from CLABSI classification. Excluded genera include: Blastomyces, Candida (only in MBI-eligible patients — screen separately), Coccidioides, Cryptococcus, Histoplasma, parasites, and viruses. Common commensals (CoNS, Streptococcus viridans, Bacillus, Corynebacterium, Micrococcus, Propionibacterium, Aerococcus, Rothia) require TWO matching cultures for LCBI Criterion 2.',
+    yes:'lcbi', no:'result_not_eligible'
+  },
+  {
+    id:'lcbi',
+    num:'Gate 2',
+    q:'Does the blood culture meet LCBI criteria?',
+    info:'LCBI Criterion 1: Recognized pathogen cultured from ≥1 blood culture.
+LCBI Criterion 2: Common commensal in ≥2 blood cultures drawn on separate occasions + ≥1 of: fever >38°C, chills, or hypotension.
+
+Set the Infection Window Period (IWP): 3 days before + day of positive culture + 3 days after.',
+    yes:'central_line', no:'result_not_lcbi'
+  },
+  {
+    id:'central_line',
+    num:'Gate 3',
+    q:'Was a central line present >2 calendar days AND in place on DOE or the day before?',
+    info:'DOE = Date of Event (date of first positive blood culture meeting criteria). The central line must have been accessed or present on DOE or the calendar day before. Peripheral IVs, midlines, and arterial lines do NOT count as central lines for CLABSI.',
+    yes:'exclusion', no:'result_lcbi_only'
+  },
+  {
+    id:'exclusion',
+    num:'Gate 4',
+    q:'Does an NHSN MCS device exclusion apply?',
+    info:'Three CLABSI exclusions under NHSN 2025:
+1. ECMO/ECLS present >2 calendar days AND in place on DOE or day before
+2. VAD (LVAD, BiVAD, RVAD, TAH) present >2 calendar days AND in place on DOE or day before
+3. Patient self-injection into the line documented or reasonably suspected during IWP
+
+NOTE: ECMO and VAD are NOT classified as central lines — they still require mandatory NHSN reporting but use a separate device type field.',
+    yes:'exclusion_type', no:'secondary'
+  },
+  {
+    id:'exclusion_type',
+    num:'Gate 4b',
+    q:'Which MCS exclusion applies?',
+    options:[
+      {v:'ecmo', l:'ECMO/ECLS — present >2 calendar days, in place on DOE or day before'},
+      {v:'vad', l:'VAD (LVAD, BiVAD, RVAD, TAH) — present >2 calendar days, in place on DOE or day before'},
+      {v:'injection', l:'Patient self-injection into the line — documented or reasonably suspected during IWP'},
+    ],
+    result:'result_excluded'
+  },
+  {
+    id:'secondary',
+    num:'Gate 5',
+    q:'Is this a Secondary BSI from another site-specific HAI?',
+    info:'A Secondary BSI requires:
+• A site-specific HAI (e.g., VAP, CAUTI, SSI) meeting criteria within the Secondary BSI Attribution Period (SBAP)
+• Blood culture organism matches the site-specific infection organism
+• SBAP = 3 days before through 7 days after HAI date of event
+
+If yes — this is NOT a primary CLABSI. It is attributed to the other HAI site.',
+    yes:'result_secondary', no:'mbi'
+  },
+  {
+    id:'mbi',
+    num:'Gate 6',
+    q:'Does this meet MBI-LCBI criteria?',
+    info:'MBI-LCBI (Mucosal Barrier Injury) requires ALL of:
+• Organism is on the MBI-eligible list (intestinal organisms, Candida, herpes simplex, etc.)
+• Patient meets ≥1 host factor: allogeneic stem cell transplant with GI GVHD Grade III/IV, neutropenia (ANC <500) for >3 consecutive days, AND
+• No other site-specific infection explains the BSI
+
+MBI-LCBI is reported to NHSN but excluded from the CLABSI SIR denominator.',
+    yes:'result_mbi', no:'result_clabsi'
+  }
+];
+
+const RESULTS = {
+  result_not_eligible:{type:'excluded',icon:'🚫',title:'Not NHSN-Eligible Organism',sub:'Excluded from LCBI/CLABSI classification.',color:'#5B21B6',
+    doc:'Document organism as not meeting NHSN surveillance definitions. No NHSN reporting required for CLABSI. Note in clinical record.'},
+  result_not_lcbi:{type:'lcbi',icon:'🔬',title:'Does Not Meet LCBI Criteria',sub:'Blood culture criteria not satisfied.',color:'#5B21B6',
+    doc:'Blood culture does not meet NHSN LCBI definition. Review culture results, timing, and clinical context. No CLABSI attribution.'},
+  result_lcbi_only:{type:'lcbi',icon:'📋',title:'LCBI — Not CLABSI',sub:'LCBI criteria met but no eligible central line present.',color:'#5B21B6',
+    doc:'Report as LCBI without CLABSI designation. Document: no central line present >2 calendar days on DOE or day before. Investigate alternative source.'},
+  result_excluded:{type:'excluded',icon:'✅',title:'LCBI with CLABSI Exclusion',sub:'Excluded from CLABSI SIR. Mandatory NHSN reporting still required.',color:'#0A7A6A',
+    doc:'Report to NHSN using appropriate device type field (ECMO/VAD/patient injection). This LCBI does NOT count toward CLABSI SIR. Document device dates, DOE, and exclusion criteria met. Notify IP&C.'},
+  result_secondary:{type:'secondary',icon:'↗️',title:'Secondary BSI',sub:'Attributed to another site-specific HAI. Not a primary CLABSI.',color:'#B45309',
+    doc:'Document the primary HAI site and attribution period. Report as secondary BSI linked to primary HAI. No separate CLABSI designation. Notify IP&C of primary HAI classification.'},
+  result_mbi:{type:'mbi',icon:'🩺',title:'MBI-LCBI',sub:'Reported to NHSN but excluded from CLABSI SIR.',color:'#1A5276',
+    doc:'Report as MBI-LCBI to NHSN. Document: host factor present, eligible MBI organism, no other HAI explanation. This is excluded from CLABSI SIR denominator. Notify IP&C and hematology team.'},
+  result_clabsi:{type:'clabsi',icon:'⚠️',title:'CLABSI — Reportable',sub:'All criteria met. Must report to NHSN. Initiate debrief.',color:'#B91C1C',
+    doc:'Mandatory NHSN CLABSI report required. Initiate CLABSI debrief within 72 hours. Document: date of event, central line details, organism, IWP. Notify IP&C, unit manager, and quality team. Review prevention bundle compliance.'},
+};
+
+const REF_TABS = [
+  {id:'lcbi_criteria', label:'LCBI Criteria'},
+  {id:'ineligible_lines', label:'Ineligible Lines'},
+  {id:'exclusions', label:'MCS Exclusions'},
+  {id:'secondary_bsi', label:'Secondary BSI'},
+  {id:'mbi', label:'MBI-LCBI'},
+  {id:'excluded_organisms', label:'Excluded Organisms'},
+];
+
+const REF_CONTENT = {
+  lcbi_criteria:`
+    <h4>LCBI Criterion 1 — Recognized Pathogen</h4>
+    <ul>
+      <li>Recognized pathogen cultured from ≥1 blood culture</li>
+      <li>Organism is NOT on the common commensal list</li>
+      <li>No other infection at the time of the positive culture</li>
+    </ul>
+    <h4>LCBI Criterion 2 — Common Commensal</h4>
+    <ul>
+      <li>Common commensal in ≥2 blood cultures drawn on SEPARATE occasions</li>
+      <li>Within the same IWP</li>
+      <li>Patient has ≥1 of: fever >38°C, chills, or hypotension</li>
+    </ul>
+    <h4>Infection Window Period (IWP)</h4>
+    <ul>
+      <li>3 calendar days before DOE + DOE + 3 calendar days after</li>
+      <li>DOE = date of first eligible positive blood culture</li>
+    </ul>
+  `,
+  ineligible_lines:`
+    <h4>These do NOT qualify as central lines for CLABSI:</h4>
+    <ul>
+      <li>Peripheral IV catheters (PIVs)</li>
+      <li>Midline catheters (not central — tip below axilla)</li>
+      <li>Arterial lines (any location)</li>
+      <li>Intraaortic balloon pumps (IABP) — unless used to infuse</li>
+      <li>Extracorporeal devices: ECMO, VAD, dialysis catheters used ONLY for dialysis</li>
+      <li>Pacemaker/defibrillator wires</li>
+      <li>Chest/pleural tubes</li>
+    </ul>
+    <h4 class="warn">Important: ECMO and VAD</h4>
+    <p>ECMO and VAD cannulas are NOT central lines under NHSN definitions. BSIs in patients with these devices require separate reporting with specific device type designation — NOT as CLABSI.</p>
+  `,
+  exclusions:`
+    <h4>Three CLABSI Exclusions (NHSN 2025):</h4>
+    <h4>1. ECMO/ECLS Exclusion</h4>
+    <ul>
+      <li>ECMO/ECLS device present >2 calendar days</li>
+      <li>Device in place on DOE OR the calendar day before DOE</li>
+      <li>Applies regardless of whether a central line is also present</li>
+    </ul>
+    <h4>2. VAD Exclusion</h4>
+    <ul>
+      <li>Ventricular Assist Device (LVAD, RVAD, BiVAD, TAH) present >2 calendar days</li>
+      <li>Device in place on DOE OR the calendar day before DOE</li>
+      <li>Includes CentriMag, HeartMate, HVAD, and similar durable devices</li>
+      <li class="warn">Impella: NOT explicitly listed — requires institutional IP&C review</li>
+    </ul>
+    <h4>3. Patient Self-Injection</h4>
+    <ul>
+      <li>Patient injected into their own central line during the IWP</li>
+      <li>Must be documented or reasonably suspected</li>
+      <li>Include documentation language in nursing/physician notes</li>
+    </ul>
+    <h4 class="warn">Critical: Mandatory Reporting Still Required</h4>
+    <p>All excluded events must still be reported to NHSN using the correct device type field. Exclusion only removes from SIR — not from reporting.</p>
+  `,
+  secondary_bsi:`
+    <h4>Secondary BSI Attribution Period (SBAP)</h4>
+    <ul>
+      <li>3 calendar days before HAI DOE through 7 calendar days after HAI DOE</li>
+    </ul>
+    <h4>Common Secondary BSI Sources:</h4>
+    <ul>
+      <li>VAP (Ventilator-Associated Pneumonia)</li>
+      <li>CAUTI (Catheter-Associated UTI)</li>
+      <li>SSI (Surgical Site Infection)</li>
+      <li>Wound infections, abscesses, GI infections</li>
+    </ul>
+    <h4>Requirements for Secondary BSI:</h4>
+    <ul>
+      <li>Site-specific HAI must independently meet NHSN criteria</li>
+      <li>Blood culture organism must match the site-specific infection organism</li>
+      <li>Must fall within the SBAP window</li>
+    </ul>
+    <h4>Repeat Infection Timeframe (RIT)</h4>
+    <ul>
+      <li>14 calendar days after the DOE of the primary infection</li>
+      <li>New infections within RIT are not reported separately</li>
+    </ul>
+  `,
+  mbi:`
+    <h4>MBI-LCBI Host Factors (need ≥1):</h4>
+    <ul>
+      <li>Allogeneic hematopoietic stem cell transplant (HSCT) with GI Graft-versus-Host Disease (GVHD) Grade III or IV</li>
+      <li>Neutropenia: ANC or WBC <500 cells/mm³ for >3 consecutive calendar days</li>
+    </ul>
+    <h4>MBI-Eligible Organisms include:</h4>
+    <ul>
+      <li>Candida species</li>
+      <li>Enterococcus species</li>
+      <li>Bacteroides species</li>
+      <li>Fusobacterium species</li>
+      <li>Clostridium species</li>
+      <li>Peptostreptococcus</li>
+      <li>Prevotella species</li>
+      <li>Veillonella species</li>
+      <li>Herpes simplex virus (HSV)</li>
+    </ul>
+    <h4 class="warn">Note:</h4>
+    <p>MBI-LCBI must be reported to NHSN but is excluded from the CLABSI SIR denominator. It is NOT a CLABSI.</p>
+  `,
+  excluded_organisms:`
+    <h4>NHSN-Excluded Organisms (not eligible for LCBI):</h4>
+    <ul>
+      <li>Blastomyces species</li>
+      <li>Coccidioides species</li>
+      <li>Cryptococcus species</li>
+      <li>Histoplasma species</li>
+      <li>Paracoccidioides species</li>
+      <li>Pneumocystis jirovecii</li>
+      <li>Parasites (e.g., Plasmodium, Babesia)</li>
+      <li>Viruses (EXCEPT HSV in MBI-eligible patients)</li>
+    </ul>
+    <h4>Common Commensals (require Criterion 2 — TWO cultures):</h4>
+    <ul>
+      <li>Coagulase-negative Staphylococci (CoNS)</li>
+      <li>Streptococcus viridans group</li>
+      <li>Bacillus species (not anthracis)</li>
+      <li>Corynebacterium species (diphtheroids)</li>
+      <li>Micrococcus species</li>
+      <li>Propionibacterium/Cutibacterium species</li>
+      <li>Aerococcus species</li>
+      <li>Rothia species</li>
+    </ul>
+  `
+};
+
+function App() {
+  const [stepId, setStepId] = useState('organism');
+  const [history, setHistory] = useState([]);
+  const [resultId, setResultId] = useState(null);
+  const [refTab, setRefTab] = useState('lcbi_criteria');
+  const [showRef, setShowRef] = useState(false);
+
+  const currentStep = STEPS.find(s => s.id === stepId);
+  const result = resultId ? RESULTS[resultId] : null;
+  const progress = Math.round((history.length / STEPS.length) * 100);
+
+  const goTo = (nextId) => {
+    if(RESULTS[nextId]) {
+      setHistory(h => [...h, stepId]);
+      setResultId(nextId);
+    } else {
+      setHistory(h => [...h, stepId]);
+      setStepId(nextId);
+    }
+  };
+
+  const goBack = () => {
+    if(resultId) {
+      setResultId(null);
+      setStepId(history[history.length-1]);
+      setHistory(h => h.slice(0,-1));
+    } else if(history.length > 0) {
+      const prev = history[history.length-1];
+      setStepId(prev);
+      setHistory(h => h.slice(0,-1));
+    }
+  };
+
+  const reset = () => {
+    setStepId('organism');
+    setHistory([]);
+    setResultId(null);
+  };
+
+  return (
+    <div className="app">
+      <div className="hdr">
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
+          <div>
+            <div className="hdr-t">CLABSI Attribution Tool <span className="hdr-badge">NHSN 2025</span></div>
+            <div className="hdr-s">CDC/NHSN Patient Safety Component Manual — Chapter 4 · 9 Blue CVICU · UT Southwestern</div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn reset" style={{padding:'6px 14px',fontSize:12}} onClick={()=>setShowRef(!showRef)}>
+              {showRef ? 'Hide' : 'Show'} Reference
+            </button>
+            {(history.length > 0 || resultId) && <button className="btn reset" style={{padding:'6px 14px',fontSize:12}} onClick={goBack}>← Back</button>}
+            <button className="btn reset" style={{padding:'6px 14px',fontSize:12}} onClick={reset}>↺ Reset</button>
+          </div>
+        </div>
+      </div>
+
+      {!resultId && (
+        <div className="progress">
+          <div style={{display:'flex',justifyContent:'space-between'}}>
+            <span style={{fontSize:12,color:'#94A3B8'}}>Step {history.length + 1} of {STEPS.length}</span>
+            <span style={{fontSize:12,color:'#12C5A6',fontWeight:700}}>{progress}% complete</span>
+          </div>
+          <div className="prog-bar"><div className="prog-fill" style={{width:progress+'%'}}></div></div>
+        </div>
+      )}
+
+      {/* Breadcrumb */}
+      {history.length > 0 && (
+        <div className="card" style={{padding:'10px 16px',marginBottom:4}}>
+          <div className="breadcrumb">
+            {history.map((h,i) => {
+              const s = STEPS.find(st => st.id === h);
+              return s ? (
+                <div key={i} className="bc-item">
+                  <span style={{color:'#12C5A6'}}>✓</span>
+                  <span>{s.num}: {s.q.substring(0,35)}...</span>
+                  {i < history.length-1 && <span className="bc-arrow">→</span>}
+                </div>
+              ) : null;
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Main content */}
+      {!resultId && currentStep && (
+        <div className="card">
+          <div className="q-num">{currentStep.num}</div>
+          <div className="q-text">{currentStep.q}</div>
+          {currentStep.info && (
+            <div className="info-box">
+              {currentStep.info.split('
+').map((line,i) => <p key={i} style={{marginBottom:line?4:0}}>{line}</p>)}
+            </div>
+          )}
+          {currentStep.options ? (
+            <div>
+              {currentStep.options.map(opt => (
+                <button key={opt.v} className="btn option" onClick={()=>goTo(currentStep.result)}>
+                  {opt.l}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="btn-row">
+              <button className="btn yes" onClick={()=>goTo(currentStep.yes)}>Yes →</button>
+              <button className="btn no" onClick={()=>goTo(currentStep.no)}>No →</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {resultId && result && (
+        <div className="card result" style={{borderColor:result.color}}>
+          <div className="result-icon">{result.icon}</div>
+          <div className="result-title" style={{color:result.color}}>{result.title}</div>
+          <div className="result-sub">{result.sub}</div>
+          <div className="doc-box">
+            <h4>Documentation Guidance</h4>
+            <p>{result.doc}</p>
+          </div>
+          <div className="result-actions">
+            <div className="btn-row">
+              <button className="btn reset" onClick={reset}>↺ Start New Case</button>
+              {history.length > 0 && <button className="btn no" onClick={goBack}>← Back</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reference Panel */}
+      {showRef && (
+        <div className="ref-card">
+          <div style={{color:'#F5B800',fontWeight:700,fontSize:13,marginBottom:10}}>
+            📚 NHSN Reference Panel — CDC/NHSN Chapter 4 (2025)
+          </div>
+          <div className="tabs">
+            {REF_TABS.map(t => (
+              <button key={t.id} className={`tab ${refTab===t.id?'active':''}`} onClick={()=>setRefTab(t.id)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="tab-content" dangerouslySetInnerHTML={{__html:REF_CONTENT[refTab]}}/>
+        </div>
+      )}
+
+      <div className="footer">
+        CLABSI Attribution Tool · NHSN 2025 · 9 Blue CVICU · UT Southwestern Medical Center<br/>
+        AI-assisted development: Claude, Anthropic (2026) · For educational and QI use only · Not a substitute for IP&amp;C review
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.render(<App/>, document.getElementById('root'));
+</script>
+</body>
+</html>
